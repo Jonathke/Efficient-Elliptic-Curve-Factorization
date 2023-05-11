@@ -1,43 +1,51 @@
 from lenstrasAlgorithm import *
-from millerRabin import isPrime, precomp_primes
+from millerRabin import isPrime, precomp_primes, MRwitness
 import sys,getopt
 from math import floor, ceil
 
 factors = []
 primefactors = []
 
-def perfectpower(n):
-    n = float(n)
-    latest = n
-    lowest = None
-    i = 2
-    while latest > 2:
-        if (abs((n**(1/i))-round(n**(1/i))) < 0.0000001):
-            if round(n**(1/i))**i == n:
-                lowest = [i, round(n**(1/i))]
-        latest = n**(1/i)
-        i += 1
-    return lowest
+def primePower(n):
+    def checkP(n, p):
+        k = 0
+        while n > 1 and n % p == 0:
+            n, k = n // p, k + 1
+        if n == 1:
+            return p, k
+        else:
+            return 0, 0
+    q = n
+    while True:
+        a = MRwitness(q)
+        if a == 0:
+            return checkP(n, q)
+        d = gcd(pow(a,q,n)-a, q)
+        if d == 1 or d == q:
+            return 0, 0
+        q = d
 
 
 def factor(n):
     print("    Factoring: " + str(n))
-    #check if prime
-    if isPrime(n):
-        print("        It is prime!")
-        return [1, n]
-    #check if perfect power
-    if not perfectpower(n) == None:
-        ret = [0]
-        l = perfectpower(n)
-        for i in range(l[0]):
-            ret.append(l[1])
-        return ret
+    #check some small primes
     for p in precomp_primes:
         if n % p ==0:
+            if n == p:
+                print("        It is prime!")
+                return [1, n]
             print(f"        Divisible by {p}")
             primefactors.append(p)
             return [0, n//p]
+    #check if perfect power
+    p, k = primePower(n)
+    if p:
+        if k == 1:
+            print("        It is prime!")
+            return [1, n]
+        print(f"        It is a prime power, {n} = " + " * ".join([str(p) for _ in range(k)]))
+        ret = [1] + [p for _ in range(k)]
+        return ret
     m = lenstra(n)
     return [0, m, n//m]
 

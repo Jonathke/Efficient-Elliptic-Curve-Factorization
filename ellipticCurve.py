@@ -1,86 +1,90 @@
 class Curve(object):
-    #Weierstras form: y**2 = x**3 + a*x + b
-    def __init__(self, a, b):
-        self.a = a
-        self.b = b
-        self.discriminant = -16*(4*a*a*a + 27*b*b)
-        self.singular = (self.discriminant == 0)
+    #Montgomery curve
+    def __init__(self, A):
+        self.A = A
 
     def testPoint(self, x, y):
-        return y*y == x*x*x + self.a*x + self.b
+        return y**2 == x**3 + self.A*x**2 + x
 
     def __str__(self):
-        return 'y^2 = x^3 + %sx + %s' % (self.a, self.b)
+        return f'y^2 = x^3 + {self.A}x^2 + x'
 
 
 class Point(object):
-    def __init__(self, x, y, curve):
+    def __init__(self, X, Z, curve):
+        self.X = X
+        self.Z = Z
         self.curve = curve
-        self.x = x
-        self.y = y
-        if not curve.testPoint(x, y):
-            raise Exception("This point %s not a valid point on the curve %s" % (self, self.curve))
+
+    def normalize(self):
+        return Point(self.X*self.Z**(-1), 1, self.curve)
 
     def __str__(self):
-        return "(%r, %r)" % (self.x, self.y)
+        return f"({self.X}: {self.Z})"
 
-    def __neg__(self):
-        return Point(self.x, -self.y, self.curve)
-
-    def __add__(self, Q):
-        if isinstance(Q, Identity):
-            return self
-        x_1, y_1, x_2, y_2 = self.x, self.y, Q.x, Q.y
-        if (x_1, y_1) == (x_2, y_2):
-            if y_1 == 0:
-                return Identity(self.curve)
-            m = (3 * x_1 * x_1 + self.curve.a) / (2 * y_1)
-        else:
-            if x_1 == x_2:
-                return Identity(self.curve)  # vertical line
-            m = (y_2 - y_1) / (x_2 - x_1)
-        x_3 = m * m - x_2 - x_1
-        y_3 = m * (x_3 - x_1) + y_1
-        return Point(x_3, -y_3, self.curve)
-
-    def __sub__(self, Q):
-        return self + -Q
+    def XZ(self):
+        return [self.X, self.Z]
 
     def __mul__(self, n):
-        if not isinstance(n, int):
-            raise Exception("Can't scale a point by something which isn't an int!")
-        if n < 0:
-            return -self * -n
-        if n == 0:
-            return Identity(self.curve)
-        Q = self
-        R = self if n & 1 == 1 else Identity(self.curve)
-        i = 2
-        while i <= n:
-            Q += Q
-            if n & i == i:
-                R += Q
-            i = i << 1
-        return R
+        """
+        montgomery-ladder
+        input: coordinates of P=(XP:ZP)
+               scalar factor m, curve constants (A:C)
+        output: KummerPoint [m]P=(X0:Z0)
+        """
+        if not n:
+            return self.parent().zero()
+        n = abs(n)
+        if n == 1:
+            return self
+
+        XP, ZP = self.XZ()
+        A = self.curve.A
+        R0, R1, diff = self, xDBL(self, self.curve.A), self
+        # Montgomery-ladder
+        for i in [int(b) for b in bin(n)[3:]]:
+            R0pR1 = xADD(R0, R1, diff)
+            diff = xADD(R0, R1, R0pR1)
+            if i == 0:
+                R0, R1 = xDBL(R0, self.curve.A), R0pR1
+            if i == 1:
+                R0, R1 = R0pR1, xDBL(R1, self.curve.A)
+        return R0
 
     def __rmul__(self, n):
         return self * n
 
-    def __ne__(self, other):
-        return not self == other
+def xDBL(P, A):
+    X, Z = P.XZ()
+    t0 = X - Z
+    t1 = X + Z
+    t0 = t0**2
+    t1 = t1**2
+    Z2 = t0
+    Z2 = Z2 + Z2
+    Z2 = Z2 + Z2
+    X2 = Z2 * t1
+    t1 = t1 - t0
+    t0 = A + 2
+    t0 = t0 * t1
+    Z2 = Z2 + t0
+    Z2 = Z2 * t1
+    return Point(X2, Z2, P.curve)
 
-
-class Identity(Point):
-    def __init__(self, curve):
-        self.curve = curve
-
-    def __str__(self):
-        return "Identity"
-
-    def __neg__(self):
-        return self
-
-    def __add__(self, Q):
-        return Q
-
-
+def xADD(P, Q, diff):
+    XP, ZP = P.XZ()
+    XQ, ZQ = Q.XZ()
+    xPQ, zPQ = diff.XZ()
+    t0 = XP + ZP
+    t1 = XP - ZP
+    XP = XQ - ZQ
+    ZP = XQ + ZQ
+    t0 = XP * t0
+    t1 = ZP * t1
+    ZP = t0 - t1
+    XP = t0 + t1
+    ZP = ZP**2
+    XQP = XP**2
+    ZQP = xPQ * ZP
+    XQP = XQP * zPQ
+    return Point(XQP, ZQP, P.curve)

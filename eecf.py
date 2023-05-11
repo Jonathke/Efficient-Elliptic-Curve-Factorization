@@ -1,7 +1,7 @@
 from lenstrasAlgorithm import *
-from Soloway_Strassen_Primality_test import *
+from millerRabin import isPrime, precomp_primes
 import sys,getopt
-from math import floor,ceil
+from math import floor, ceil
 
 factors = []
 primefactors = []
@@ -21,10 +21,10 @@ def perfectpower(n):
 
 
 def factor(n):
-    print("Factoring: " + str(n))
+    print("    Factoring: " + str(n))
     #check if prime
-    if SSTest(n):
-        print("    It is prime!")
+    if isPrime(n):
+        print("        It is prime!")
         return [1, n]
     #check if perfect power
     if not perfectpower(n) == None:
@@ -33,16 +33,26 @@ def factor(n):
         for i in range(l[0]):
             ret.append(l[1])
         return ret
-    if n % 2 == 0:
-        print("    Divisible by 2")
-        primefactors.append(2)
-        return [0, n//2]
-    if n % 3 == 0:
-        print("    Divisible by 3")
-        primefactors.append(3)
-        return [0, n//3]
-    p = lenstra(n)
-    return [0, p, n//p]
+    for p in precomp_primes:
+        if n % p ==0:
+            print(f"        Divisible by {p}")
+            primefactors.append(p)
+            return [0, n//p]
+    m = lenstra(n)
+    return [0, m, n//m]
+
+def nextPrime(r):
+    if r % 2 == 0:
+        return nextPrime(r+1)
+    if isPrime(r):
+        return r
+    else:
+        return nextPrime(r+2)
+
+def random_Nbit(n):
+    range_start = 2**(n-1)
+    range_end = (2**n)-1
+    return randint(range_start, range_end)
 
 def main(argv):
     short_options = "hd:D:n:"
@@ -56,36 +66,37 @@ def main(argv):
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print("py eecf.py -d (--demo) d: Factor a random number with d digits\n"
-                  "py eecf.py -D (--demoHARD) d: Factor a number with d digits, consisting of two primes of [n/2] digits\n"
+            print("py eecf.py -d (--demo) d: Factor a random number with d bits\n"
+                  "py eecf.py -D (--demoHARD) d: Factor a number with d bits, consisting of two primes of [d/2] bits\n"
                   "py eecf.py -n (--number) n: Factor the provided number n\n"
                   "py eecf.py -h (--help): Help")
             sys.exit()
         elif opt in ("-d", "--demo"):
-            n = random_with_N_digits(int(arg))
+            n = random_Nbit(int(arg))
         elif opt in ("-D", "--demoHARD"):
-            n = primeSizeN(floor(int(arg)/2))*primeSizeN(ceil(int(arg)/2))
+            n = nextPrime(random_Nbit(floor(int(arg)/2)))*nextPrime(random_Nbit(ceil(int(arg)/2)))
         elif opt in ("-n", "--number"):
             n = int(arg)
-    print("\nTrying to factor %s\n"
-          "----------------------------" % n)
+    print(f"\nTrying to factor {n}\n----------------------------------------")
     factors.append(n)
     while len(factors) > 0:
-        fl = factor(factors[0])
+        recovered = primefactors + factors
+        if len(recovered) > 1:
+            recovered.sort()
+            print(f"\n{n} = " + " * ".join([str(p) for p in primefactors + factors]) + "\n")
+        fl = factor(factors.pop())
         if fl[0] == 0:
-            factors = factors + fl[1:]
-            factors.pop(0)
+            factors = fl[1:] + factors
         else:
             primefactors = primefactors + fl[1:]
-            factors.pop(0)
     primefactors.sort()
     m = 1
     for p in primefactors:
         m = m * p
+    assert m == n
     print("\n -------- !DONE! -------- \n")
     print(str(n) + " = {}".format(" * ".join([str(i) for i in primefactors])))
-    if not m == n:
-        print("Uhh, started with %s, but this is %s" % (n, m))
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
